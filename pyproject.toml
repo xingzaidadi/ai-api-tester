@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-api-tester"
+version = "0.1.0"
+description = "AI-driven API automated testing tool — reads source code, generates multi-dimensional test cases, executes and reports"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.28.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+ai-tester = "lib.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["lib*", "prompts*", "configs*", "examples*"]
+
+[tool.setuptools.package-data]
+prompts = ["*.md"]
+configs = ["*.yaml"]
+examples = ["*.yaml"]

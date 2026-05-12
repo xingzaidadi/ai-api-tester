@@ -1,0 +1,414 @@
+metadata:
+  api: "POST /api/v1/orders"
+  language: "java"
+  framework: "spring-boot"
+  generated_at: "2026-05-10T10:00:00"
+  risk_score: 7.5
+  dimensions_covered:
+    - functional_positive
+    - functional_negative
+    - boundary_value
+    - security_auth
+    - security_injection
+    - idempotency
+    - state_machine
+    - compliance
+
+env:
+  base_url: "{{ENV.API_BASE}}"
+  auth_token: "{{ENV.AUTH_TOKEN}}"
+  admin_token: "{{ENV.ADMIN_TOKEN}}"
+  user_b_token: "{{ENV.USER_B_TOKEN}}"
+
+setup:
+  - id: create_product
+    action: http
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/products"
+      headers:
+        Authorization: "Bearer {{env.admin_token}}"
+      body:
+        name: "测试商品-自动化"
+        price: 99.99
+        stock: 100
+    extract:
+      productId: "$.data.id"
+
+cases:
+  # ========== 维度1: 功能正向 ==========
+  - id: TC-FUNC-001
+    name: "正常创建订单-单件商品"
+    dimension: functional_positive
+    priority: P0
+    source: "OrderController.java:45 → @PostMapping('/orders')"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+        Content-Type: "application/json"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市浦东新区张江高科技园区"
+    expect:
+      status: 200
+      body:
+        code: "0"
+        data.orderId: "@notNull"
+        data.status: "PENDING"
+        data.totalAmount: "@gt(0)"
+    teardown:
+      - action: http
+        request:
+          method: DELETE
+          url: "{{env.base_url}}/api/v1/orders/{{data.orderId}}"
+          headers:
+            Authorization: "Bearer {{env.admin_token}}"
+
+  - id: TC-FUNC-002
+    name: "正常创建订单-多件商品"
+    dimension: functional_positive
+    priority: P0
+    source: "OrderService.java:67 → calculateTotal()"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 5
+        shippingAddress: "北京市朝阳区"
+        remark: "请尽快发货"
+    expect:
+      status: 200
+      body:
+        code: "0"
+        data.quantity: 5
+        data.totalAmount: "@gt(0)"
+
+  # ========== 维度1: 功能负向 ==========
+  - id: TC-FUNC-003
+    name: "缺少必填字段-productId为空"
+    dimension: functional_negative
+    priority: P1
+    source: "OrderDTO.java:12 → @NotNull private Long productId"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 400
+      body:
+        code: "@notEqual('0')"
+
+  - id: TC-FUNC-004
+    name: "缺少必填字段-quantity为空"
+    dimension: functional_negative
+    priority: P1
+    source: "OrderDTO.java:15 → @NotNull @Min(1) private Integer quantity"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        shippingAddress: "上海市"
+    expect:
+      status: 400
+
+  - id: TC-FUNC-005
+    name: "商品不存在"
+    dimension: functional_negative
+    priority: P1
+    source: "OrderService.java:34 → productRepository.findById()"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: 999999999
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 404
+
+  - id: TC-FUNC-006
+    name: "库存不足"
+    dimension: functional_negative
+    priority: P0
+    source: "OrderService.java:52 → if (product.getStock() < quantity)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 99999
+        shippingAddress: "上海市"
+    expect:
+      status: 409
+      body:
+        code: "@notEqual('0')"
+
+  # ========== 维度1: 边界值 ==========
+  - id: TC-BOUND-001
+    name: "数量边界-最小值1"
+    dimension: boundary_value
+    priority: P1
+    source: "OrderDTO.java:15 → @Min(1)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 200
+
+  - id: TC-BOUND-002
+    name: "数量边界-零值(应拒绝)"
+    dimension: boundary_value
+    priority: P1
+    source: "OrderDTO.java:15 → @Min(1)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 0
+        shippingAddress: "上海市"
+    expect:
+      status: 400
+
+  - id: TC-BOUND-003
+    name: "数量边界-负数(应拒绝)"
+    dimension: boundary_value
+    priority: P1
+    source: "OrderDTO.java:15 → @Min(1)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: -1
+        shippingAddress: "上海市"
+    expect:
+      status: 400
+
+  - id: TC-BOUND-004
+    name: "地址长度超限(>200字符)"
+    dimension: boundary_value
+    priority: P2
+    source: "OrderDTO.java:18 → @Size(max=200)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市浦东新区张江高科技园区碧波路690号这是一个非常非常长的地址用来测试地址字段的最大长度限制是否生效上海市浦东新区张江高科技园区碧波路690号这是一个非常非常长的地址用来测试地址字段的最大长度限制是否生效上海市浦东新区张江高科技园区碧波路690号"
+    expect:
+      status: 400
+
+  # ========== 维度2: 安全-认证/越权 ==========
+  - id: TC-AUTH-001
+    name: "无Token访问-应返回401"
+    dimension: security_auth
+    priority: P0
+    source: "SecurityConfig.java:28 → .antMatchers('/api/v1/**').authenticated()"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 401
+
+  - id: TC-AUTH-002
+    name: "Token过期-应返回401"
+    dimension: security_auth
+    priority: P1
+    source: "JwtFilter.java:45 → validateToken()"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxMDAwMDAwMDAwfQ.invalid"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 401
+
+  - id: TC-AUTH-003
+    name: "水平越权-用户B查看用户A的订单"
+    dimension: security_auth
+    priority: P0
+    source: "OrderService.java:89 → 应校验 userId 归属"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/v1/orders/1"
+      headers:
+        Authorization: "Bearer {{env.user_b_token}}"
+    expect:
+      status: 403
+
+  # ========== 维度3: 安全-注入 ==========
+  - id: TC-INJ-001
+    name: "SQL注入-地址字段"
+    dimension: security_injection
+    priority: P1
+    source: "OrderMapper.xml:12 → 检查是否存在字符串拼接"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "' OR 1=1; DROP TABLE orders;--"
+    expect:
+      status: "@in([200, 400])"
+      body:
+        "@not_contains": ["error", "sql", "syntax", "exception", "stack trace"]
+
+  - id: TC-INJ-002
+    name: "XSS注入-备注字段"
+    dimension: security_injection
+    priority: P1
+    source: "响应中不应包含未转义的脚本标签"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市"
+        remark: "<script>alert('xss')</script>"
+    expect:
+      status: "@in([200, 400])"
+      body:
+        "@not_contains": ["<script>"]
+
+  # ========== 维度4: 幂等性 ==========
+  - id: TC-IDEM-001
+    name: "相同请求重复提交3次-只创建一笔订单"
+    dimension: idempotency
+    priority: P1
+    source: "POST 接口应具备幂等性"
+    repeat: 3
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+        Idempotency-Key: "test-idem-key-001"
+      body:
+        productId: "{{productId}}"
+        quantity: 1
+        shippingAddress: "上海市幂等性测试"
+    expect:
+      status: 200
+      all_responses_identical: true
+
+  # ========== 维度5: 状态机 ==========
+  - id: TC-STATE-001
+    name: "正常状态流转-PENDING→PAID"
+    dimension: state_machine
+    priority: P0
+    source: "OrderService.java:112 → updateStatus()"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders/{{orderId}}/pay"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+    expect:
+      status: 200
+      body:
+        data.status: "PAID"
+
+  - id: TC-STATE-002
+    name: "非法状态迁移-CANCELLED订单不能支付"
+    dimension: state_machine
+    priority: P0
+    source: "OrderService.java:115 → if (order.getStatus() != PENDING)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders/{{cancelledOrderId}}/pay"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+    expect:
+      status: 409
+
+  - id: TC-STATE-003
+    name: "非法状态迁移-已发货订单不能再次支付"
+    dimension: state_machine
+    priority: P1
+    source: "OrderService.java:115"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders/{{shippedOrderId}}/pay"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+    expect:
+      status: 409
+
+  # ========== 维度10: 合规/脱敏 ==========
+  - id: TC-COMP-001
+    name: "响应中手机号必须脱敏"
+    dimension: compliance
+    priority: P2
+    source: "OrderVO.java → phone 字段应脱敏显示"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/v1/orders/1"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+    expect:
+      status: 200
+      body:
+        data.phone: "@matches(\\d{3}\\*{4}\\d{4})"
+
+  - id: TC-COMP-002
+    name: "响应中不应泄露内部异常堆栈"
+    dimension: compliance
+    priority: P1
+    source: "全局异常处理器应屏蔽堆栈信息"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/v1/orders"
+      headers:
+        Authorization: "Bearer {{env.auth_token}}"
+      body:
+        productId: "invalid_type"
+        quantity: 1
+        shippingAddress: "上海市"
+    expect:
+      status: 400
+      body:
+        "@not_contains": ["java.lang", "at com.", "NullPointerException", "stack trace"]

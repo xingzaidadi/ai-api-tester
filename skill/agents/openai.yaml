@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI API Tester"
+  short_description: "Locate API source code, generate validated YAML tests, and run HTTP test suites"
+  default_prompt: "Use $ai-api-tester to locate the source code for an API endpoint, generate executable YAML test cases, validate them, and show the coverage matrix before running."

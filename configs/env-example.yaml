@@ -1,0 +1,23 @@
+# AI API Tester 环境配置模板
+# 复制此文件为 env-test.yaml / env-staging.yaml 并填入实际值
+
+# 基础地址
+base_url: "http://localhost:8080"
+
+# 认证 Token（按角色区分）
+auth_token: "your-jwt-token-here"
+admin_token: "your-admin-jwt-token-here"
+user_b_token: "your-user-b-jwt-token-here"
+
+# 数据库（用于数据校验，可选）
+db_host: "localhost"
+db_port: 3306
+db_name: "test_db"
+db_user: "root"
+db_password: ""
+
+# 超时设置（秒）
+request_timeout: 30
+
+# 并发测试线程数
+concurrency_threads: 10

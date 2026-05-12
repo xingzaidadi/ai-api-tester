@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include prompts *.md
+recursive-include configs *.yaml
+recursive-include examples *.yaml
+recursive-include skill *
