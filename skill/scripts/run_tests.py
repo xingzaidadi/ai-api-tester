@@ -14,6 +14,8 @@ def main():
     parser.add_argument("yaml_file", help="YAML test case file")
     parser.add_argument("--env-file", "-e", default=None, help="Environment config file")
     parser.add_argument("--report", "-r", default=None, help="Report output path")
+    parser.add_argument("--dashboard", "-d", default=None, help="Path to test-output/ dir for dashboard regeneration")
+    parser.add_argument("--ci", action="store_true", default=False, help="Output JUnit XML next to the report")
     args = parser.parse_args()
 
     import yaml
@@ -54,6 +56,31 @@ def main():
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(reporter.json_report(result))
         print(f"Report saved: {report_path}")
+
+    if args.dashboard and args.report:
+        try:
+            import subprocess
+            dashboard_dir = Path(args.dashboard)
+            if dashboard_dir.is_dir():
+                subprocess.run(
+                    [sys.executable, str(Path(__file__).parent / "dashboard.py"), str(dashboard_dir)],
+                    check=False
+                )
+        except Exception:
+            pass  # Dashboard update is best-effort
+
+    if args.ci and args.report:
+        try:
+            import subprocess
+            junit_path = Path(args.report).with_suffix('.xml')
+            subprocess.run(
+                [sys.executable, str(Path(__file__).parent / "ci_reporter.py"),
+                 args.report, "-f", "junit", "-o", str(junit_path)],
+                check=False
+            )
+            print(f"JUnit XML: {junit_path}")
+        except Exception:
+            pass
 
     sys.exit(0 if result.failed == 0 and result.errored == 0 else 1)
 

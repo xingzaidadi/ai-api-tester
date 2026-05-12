@@ -15,6 +15,14 @@ Generate source-backed API test cases, validate the YAML, execute HTTP tests, an
 
 ## Workflow
 
+### Initialize Project
+
+When a user wants to start using ai-api-tester on their project, or says "初始化" / "setup" / "init":
+
+1. Run `python3 scripts/init_project.py <project_path>` to detect the project and create env.yaml template.
+2. Ask the user to fill in the `base_url` and auth tokens in the generated `env.yaml`.
+3. Proceed to any of the workflows below.
+
 ### Generate Test Cases
 
 1. Run `python3 scripts/detect.py <project_path>` to identify language and framework.
@@ -91,6 +99,7 @@ For updating existing test cases when source code has changed:
 - `scripts/learn_history.py <output_dir> [--save PATH]`: learn from historical reports and generate risk profile.
 - `scripts/dashboard.py <output_dir> [--output PATH]`: generate HTML dashboard from historical reports.
 - `scripts/ci_reporter.py <report.json> [--format junit|markdown] [--analysis PATH] [--output PATH]`: convert reports to CI formats.
+- `scripts/init_project.py <project_path> [--output-dir DIR]`: initialize a project for ai-api-tester (creates env.yaml, output dir, prints guide).
 
 ## References
 
