@@ -68,7 +68,7 @@ class SourceAnalyzer:
         models: dict[str, str] = {}
         for code_file in ctx.files:
             for idx, line in enumerate(code_file.content.splitlines(), start=1):
-                for match in re.finditer(r"@RequestBody\s+(?:@\w+\s+)*(\w+)", line):
+                for match in re.finditer(r"@(?:RequestBody|X5RequestBody)\s+(?:@\w+\s+)*(\w+)", line):
                     model_name = match.group(1)
                     models[model_name] = f"{code_file.path}:{idx}"
         return models

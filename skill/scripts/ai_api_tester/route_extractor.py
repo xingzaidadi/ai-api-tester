@@ -29,6 +29,11 @@ SPRING_METHODS = {
     "PatchMapping": "PATCH",
 }
 
+# Custom Mapping annotations that behave like @RequestMapping (treat as POST by default)
+CUSTOM_MAPPING_ANNOTATIONS = {
+    "X5RequestMapping",
+}
+
 FASTAPI_METHODS = {"get", "post", "put", "delete", "patch", "head", "options"}
 
 
@@ -209,6 +214,9 @@ def _parse_spring_mapping(annotation: str) -> tuple[list[str], str]:
         methods = [SPRING_METHODS[name]]
     elif name == "RequestMapping":
         methods = _extract_spring_request_methods(annotation)
+    elif name in CUSTOM_MAPPING_ANNOTATIONS:
+        # Custom mapping annotations (e.g. @X5RequestMapping) default to POST
+        methods = ["POST"]
     else:
         methods = []
 

@@ -71,7 +71,11 @@ def main():
 
     output_path = args.output or f"tests/{args.url.strip('/').replace('/', '_')}_context.json"
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text(json.dumps(output, ensure_ascii=False, indent=2))
+    Path(output_path).write_text(
+        json.dumps(output, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        errors="replace",
+    )
     print(f"Context saved to: {output_path}")
 
 

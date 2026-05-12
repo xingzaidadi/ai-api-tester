@@ -145,24 +145,43 @@ class ProjectDetector:
 
     def _match_signals(self, signals: list) -> bool:
         for filename, keyword in signals:
+            # Check root first
             filepath = self.project_path / filename
-            if filepath.exists():
-                if keyword is None:
-                    return True
-                try:
-                    content = filepath.read_text(encoding="utf-8", errors="ignore")
-                    if keyword in content:
+            if self._check_signal_file(filepath, keyword):
+                return True
+            # Search up to 3 levels deep for multi-module projects
+            for path in self.project_path.rglob(filename):
+                if path.is_file() and len(path.relative_to(self.project_path).parts) <= 3:
+                    if self._check_signal_file(path, keyword):
                         return True
-                except (OSError, UnicodeDecodeError):
-                    continue
         return False
+
+    def _check_signal_file(self, filepath: Path, keyword) -> bool:
+        if not filepath.exists():
+            return False
+        if keyword is None:
+            return True
+        try:
+            content = filepath.read_text(encoding="utf-8", errors="ignore")
+            return keyword in content
+        except (OSError, UnicodeDecodeError):
+            return False
 
     def _resolve_entry_dirs(self, dirs: list) -> list:
         resolved = []
         for d in dirs:
+            # Check at root level
             full_path = self.project_path / d
             if full_path.exists() and full_path.is_dir():
                 resolved.append(str(full_path))
+            # Also search sub-modules (multi-module Maven/Gradle projects)
+            for path in self.project_path.rglob(d):
+                if path.is_dir() and str(path) not in resolved:
+                    # Skip build/target/test directories
+                    rel = str(path.relative_to(self.project_path))
+                    if any(skip in rel for skip in ["target", "build", "test", ".git", "node_modules"]):
+                        continue
+                    resolved.append(str(path))
         return resolved if resolved else [str(self.project_path)]
 
     def _fallback_detect(self) -> ProjectInfo:
