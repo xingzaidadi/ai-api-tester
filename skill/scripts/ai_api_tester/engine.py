@@ -2,11 +2,13 @@
 测试执行引擎：读取 YAML 用例 → 发 HTTP → 断言 → 报告
 """
 
+from __future__ import annotations
+
 import time
 import json
 import re
 import os
-import requests
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 from .assertion import AssertionEngine
@@ -48,8 +50,13 @@ class SuiteResult:
 
 class TestEngine:
     def __init__(self, env: dict = None):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL.*")
+            import requests
+
         self.env = env or {}
         self.variables = {}   # 存储 setup 和运行时提取的变量
+        self.requests = requests
         self.session = requests.Session()
 
     def run_suite(self, suite: dict) -> SuiteResult:
@@ -241,17 +248,24 @@ class TestEngine:
                 except Exception as e:
                     result.teardown_errors.append(str(e))
 
-        except requests.Timeout:
-            result.status = "error"
-            result.error_message = "请求超时"
-        except requests.ConnectionError:
-            result.status = "error"
-            result.error_message = "连接失败"
         except Exception as e:
-            result.status = "error"
-            result.error_message = str(e)
+            if self._is_timeout(e):
+                result.status = "error"
+                result.error_message = "请求超时"
+            elif self._is_connection_error(e):
+                result.status = "error"
+                result.error_message = "连接失败"
+            else:
+                result.status = "error"
+                result.error_message = str(e)
 
         return result
+
+    def _is_timeout(self, error: Exception) -> bool:
+        return isinstance(error, getattr(self.requests, "Timeout", ())) or error.__class__.__name__ == "Timeout"
+
+    def _is_connection_error(self, error: Exception) -> bool:
+        return isinstance(error, getattr(self.requests, "ConnectionError", ())) or error.__class__.__name__ == "ConnectionError"
 
     def _send_request(self, req: dict) -> requests.Response:
         prepared = self._prepare_request(req)

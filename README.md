@@ -207,10 +207,12 @@ PYTHONPYCACHEPREFIX=/private/tmp/pycache-ai-api-tester \
   tests.test_schema \
   tests.test_engine \
   tests.test_failure_analyzer \
-  tests.test_cli_workflow -v
+  tests.test_cli_workflow \
+  tests.test_skill_install_smoke \
+  tests.test_skill_structure -v
 ```
 
-The suite covers route extraction, source analysis, YAML schema validation, the HTTP runner, failure classification, and the main CLI workflow for context generation and YAML validation.
+The suite covers route extraction, source analysis, YAML schema validation, the HTTP runner, failure classification, the main CLI workflow, skill structure, and copied-skill smoke behavior.
 
 Validate the skill:
 
