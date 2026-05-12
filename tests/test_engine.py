@@ -159,5 +159,178 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(1, len(engine.session.calls))
 
 
+class NonJsonResponse:
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+        self.headers = {}
+
+    def json(self):
+        raise ValueError("No JSON")
+
+
+class FailOnNthSession(FakeSession):
+    def __init__(self, responses, fail_on=None):
+        super().__init__(responses)
+        self.fail_on = fail_on or set()
+
+    def _call(self, method, url, **kwargs):
+        self.calls.append({"method": method, "url": url, **kwargs})
+        if len(self.calls) in self.fail_on:
+            raise Exception("teardown failed")
+        if not self.responses:
+            raise AssertionError("No fake response queued")
+        return self.responses.pop(0)
+
+
+class FakeTimeout(Exception):
+    pass
+
+
+FakeTimeout.__name__ = "Timeout"
+
+
+class FakeConnectionError(Exception):
+    pass
+
+
+FakeConnectionError.__name__ = "ConnectionError"
+
+
+class RaisingSession(FakeSession):
+    """A session that raises a given exception on the first call."""
+
+    def __init__(self, exc):
+        super().__init__([])
+        self._exc = exc
+
+    def _call(self, method, url, **kwargs):
+        self.calls.append({"method": method, "url": url, **kwargs})
+        raise self._exc
+
+
+class EngineEdgeCaseTest(unittest.TestCase):
+    def _minimal_suite(self, **overrides):
+        suite = {
+            "metadata": {"api": "GET /test"},
+            "env": {"base_url": "http://example.com"},
+            "cases": [
+                {
+                    "id": "TC-EDGE-001",
+                    "name": "edge case",
+                    "dimension": "edge",
+                    "priority": "P1",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{env.base_url}}/test",
+                    },
+                    "expect": {"status": 200},
+                }
+            ],
+        }
+        case = suite["cases"][0]
+        for key, val in overrides.items():
+            if key == "env":
+                suite["env"].update(val)
+            elif key == "query":
+                case["request"]["query"] = val
+            elif key in ("expect", "request", "teardown", "repeat"):
+                case[key] = val
+            else:
+                case[key] = val
+        return suite
+
+    def test_unresolved_variable_kept_as_literal(self):
+        engine = TestEngine()
+        engine.session = FakeSession([FakeResponse(200, {"ok": True})])
+
+        suite = self._minimal_suite(query={"filter": "{{missing_var}}"})
+        result = engine.run_suite(suite)
+
+        self.assertEqual(1, result.passed)
+        self.assertEqual({"filter": "{{missing_var}}"}, engine.session.calls[0]["params"])
+
+    def test_response_non_json_body(self):
+        engine = TestEngine()
+        engine.session = FakeSession([NonJsonResponse(200, "plain text")])
+
+        suite = self._minimal_suite()
+        result = engine.run_suite(suite)
+
+        self.assertEqual("plain text", result.cases[0].response_body)
+
+    def test_repeat_idempotency_pass(self):
+        engine = TestEngine()
+        engine.session = FakeSession([
+            FakeResponse(200, {"data": "same"}),
+            FakeResponse(200, {"data": "same"}),
+            FakeResponse(200, {"data": "same"}),
+        ])
+
+        suite = self._minimal_suite(
+            repeat=3,
+            expect={"status": 200, "all_responses_identical": True},
+        )
+        result = engine.run_suite(suite)
+
+        self.assertEqual("pass", result.cases[0].status)
+        self.assertEqual(3, len(engine.session.calls))
+
+    def test_repeat_idempotency_fail(self):
+        engine = TestEngine()
+        engine.session = FakeSession([
+            FakeResponse(200, {"data": "a"}),
+            FakeResponse(200, {"data": "b"}),
+            FakeResponse(200, {"data": "a"}),
+        ])
+
+        suite = self._minimal_suite(
+            repeat=3,
+            expect={"status": 200, "all_responses_identical": True},
+        )
+        result = engine.run_suite(suite)
+
+        self.assertEqual("fail", result.cases[0].status)
+        self.assertTrue(any("幂等性" in f for f in result.cases[0].failures))
+
+    def test_teardown_error_does_not_affect_case_status(self):
+        engine = TestEngine()
+        # Call 1 is the case request (succeeds), call 2 is teardown (fails)
+        engine.session = FailOnNthSession(
+            [FakeResponse(200, {"ok": True})],
+            fail_on={2},
+        )
+
+        suite = self._minimal_suite(
+            teardown=[
+                {"request": {"method": "DELETE", "url": "http://example.com/cleanup"}}
+            ],
+        )
+        result = engine.run_suite(suite)
+
+        self.assertEqual("pass", result.cases[0].status)
+        self.assertTrue(len(result.cases[0].teardown_errors) > 0)
+
+    def test_timeout_error_marks_case_as_error(self):
+        engine = TestEngine()
+        engine.session = RaisingSession(FakeTimeout("request timed out"))
+
+        suite = self._minimal_suite()
+        result = engine.run_suite(suite)
+
+        self.assertEqual("error", result.cases[0].status)
+        self.assertIn("超时", result.cases[0].error_message)
+
+    def test_connection_error_marks_case_as_error(self):
+        engine = TestEngine()
+        engine.session = RaisingSession(FakeConnectionError("connection refused"))
+
+        suite = self._minimal_suite()
+        result = engine.run_suite(suite)
+
+        self.assertEqual("error", result.cases[0].status)
+        self.assertIn("连接", result.cases[0].error_message)
+
+
 if __name__ == "__main__":
     unittest.main()

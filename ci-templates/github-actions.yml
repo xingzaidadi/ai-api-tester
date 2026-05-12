@@ -1,0 +1,105 @@
+# AI API Tester - GitHub Actions Integration
+# Add this workflow to your project's .github/workflows/ directory.
+#
+# Prerequisites:
+# - ANTHROPIC_API_KEY secret (for Claude Code CLI)
+# - Python 3.8+ available
+# - ai-api-tester skill installed
+
+name: API Test (AI-Driven)
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'src/**'
+      - 'app/**'
+      - 'api/**'
+
+jobs:
+  api-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git diff
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pyyaml
+
+      - name: Detect affected APIs
+        id: detect
+        run: |
+          python ai-api-tester/scripts/diff_detect.py . --base origin/${{ github.base_ref }} --output affected.json
+          echo "count=$(python -c "import json; print(json.load(open('affected.json'))['total'])")" >> $GITHUB_OUTPUT
+
+      - name: Generate test contexts
+        if: steps.detect.outputs.count != '0'
+        run: |
+          python ai-api-tester/scripts/auto.py . --output-dir test-output
+
+      - name: Generate and run tests
+        if: steps.detect.outputs.count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Use Claude Code CLI to generate YAML cases from contexts
+          # Then validate and run
+          for ctx in test-output/*/context.json; do
+            dir=$(dirname "$ctx")
+            # Generate cases via Claude Code (skill invocation)
+            claude -p "Using ai-api-tester skill, read $ctx and generate test cases. Save to $dir/cases.yaml"
+            # Validate
+            python ai-api-tester/scripts/validate_cases.py "$dir/cases.yaml"
+            # Run tests
+            python ai-api-tester/scripts/run_tests.py "$dir/cases.yaml" \
+              --env-file env.yaml \
+              --report "$dir/report.json" || true
+          done
+
+      - name: Generate JUnit report
+        if: steps.detect.outputs.count != '0'
+        run: |
+          for report in test-output/*/report.json; do
+            dir=$(dirname "$report")
+            python ai-api-tester/scripts/ci_reporter.py "$report" -f junit -o "$dir/junit.xml"
+          done
+
+      - name: Publish test results
+        if: steps.detect.outputs.count != '0'
+        uses: dorny/test-reporter@v1
+        with:
+          name: API Tests
+          path: 'test-output/*/junit.xml'
+          reporter: java-junit
+
+      - name: Comment PR with results
+        if: steps.detect.outputs.count != '0' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const glob = require('glob');
+            // Read all markdown summaries and post as PR comment
+            const reports = glob.sync('test-output/*/report.json');
+            let body = '## 🧪 AI API Test Results\n\n';
+            for (const report of reports) {
+              const data = JSON.parse(fs.readFileSync(report));
+              body += `### ${data.api}\n`;
+              body += `✅ ${data.passed} passed | ❌ ${data.failed} failed | ⚠️ ${data.errored} errors\n\n`;
+            }
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: No API changes
+        if: steps.detect.outputs.count == '0'
+        run: echo "No API changes detected. Skipping tests."

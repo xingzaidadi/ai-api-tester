@@ -1,0 +1,11 @@
+{
+  "name": "ai-api-tester-mcp",
+  "version": "0.1.0",
+  "description": "MCP Server for AI API Tester - source-code-driven API test generation and execution",
+  "main": "server.py",
+  "scripts": {
+    "start": "python server.py"
+  },
+  "keywords": ["mcp", "api-testing", "test-generation"],
+  "license": "MIT"
+}

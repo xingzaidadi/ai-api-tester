@@ -1,0 +1,74 @@
+# AI API Tester - GitLab CI Integration
+# Include this in your project's .gitlab-ci.yml or add as a template.
+#
+# Prerequisites:
+# - ANTHROPIC_API_KEY CI variable
+# - Python 3.8+ in runner image
+# - ai-api-tester skill installed
+
+stages:
+  - detect
+  - test
+  - report
+
+variables:
+  AI_TESTER_PATH: ai-api-tester/scripts
+  OUTPUT_DIR: test-output
+
+detect-affected-apis:
+  stage: detect
+  image: python:3.11-slim
+  script:
+    - pip install requests pyyaml
+    - python $AI_TESTER_PATH/diff_detect.py . --base origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME --output affected.json
+    - cat affected.json
+  artifacts:
+    paths:
+      - affected.json
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+generate-and-run-tests:
+  stage: test
+  image: python:3.11-slim
+  needs: [detect-affected-apis]
+  script:
+    - pip install requests pyyaml
+    - |
+      AFFECTED=$(python -c "import json; print(json.load(open('affected.json'))['total'])")
+      if [ "$AFFECTED" = "0" ]; then
+        echo "No API changes detected. Skipping."
+        exit 0
+      fi
+    - python $AI_TESTER_PATH/auto.py . --output-dir $OUTPUT_DIR
+    # Generate cases via Claude Code and run
+    - |
+      for ctx in $OUTPUT_DIR/*/context.json; do
+        dir=$(dirname "$ctx")
+        claude -p "Using ai-api-tester skill, read $ctx and generate test cases. Save to $dir/cases.yaml"
+        python $AI_TESTER_PATH/validate_cases.py "$dir/cases.yaml"
+        python $AI_TESTER_PATH/run_tests.py "$dir/cases.yaml" --env-file env.yaml --report "$dir/report.json" || true
+        python $AI_TESTER_PATH/ci_reporter.py "$dir/report.json" -f junit -o "$dir/junit.xml"
+      done
+  artifacts:
+    paths:
+      - $OUTPUT_DIR/
+    reports:
+      junit: $OUTPUT_DIR/*/junit.xml
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+post-summary:
+  stage: report
+  image: python:3.11-slim
+  needs: [generate-and-run-tests]
+  script:
+    - pip install requests pyyaml
+    - |
+      for report in $OUTPUT_DIR/*/report.json; do
+        python $AI_TESTER_PATH/ci_reporter.py "$report" -f markdown
+      done
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

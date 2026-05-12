@@ -40,6 +40,42 @@ Generate source-backed API test cases, validate the YAML, execute HTTP tests, an
 
 Run `python3 scripts/risk.py <url> <project_path> --method <METHOD>` to show risk score, recent changes, fix commits, hot files, and risk factors.
 
+### One-Command Mode
+
+For batch testing all discovered APIs in a project:
+
+1. Run `python3 scripts/auto.py <project_path> --validate-only` to list discovered routes.
+2. Run `python3 scripts/auto.py <project_path> --output-dir <dir>` to generate context for all routes.
+3. For each generated `context.json`, read the `test_basis` and generate YAML test cases.
+4. Run `python3 scripts/validate_cases.py <cases.yaml>` for each generated YAML.
+5. Run `python3 scripts/run_tests.py <cases.yaml> --env-file <env.yaml> --report <report.json>` for each.
+6. Aggregate results and display overall health summary.
+
+When the user says "帮我测这个项目的所有接口" or "test all APIs in this project", use this workflow.
+
+### Incremental Mode
+
+For testing only APIs affected by recent code changes:
+
+1. Run `python3 scripts/diff_detect.py <project_path> --base <branch>` to identify affected routes.
+2. If no routes affected, report "No API changes detected" and stop.
+3. For each affected route, run the Generate Test Cases workflow (steps 1-9).
+4. Execute and analyze as usual.
+
+When the user says "帮我测这次改动涉及的接口", "test my changes", or "incremental test", use this workflow. Default base is `main` for PR workflows.
+
+### Heal Stale Cases
+
+For updating existing test cases when source code has changed:
+
+1. Run `python3 scripts/heal.py <cases.yaml> <project_path> --output <heal_report.json>`.
+2. Read the heal report to identify stale, broken, or outdated cases.
+3. For each issue found, update the YAML case accordingly:
+   - `stale`: field was renamed → update request body field names and expect paths.
+   - `broken`: route path changed → update request URLs.
+   - `outdated`: constraint values changed → update boundary test values.
+4. Re-validate the updated YAML with `python3 scripts/validate_cases.py`.
+
 ## Scripts
 
 - `scripts/detect.py <project_path>`: detect language/framework.
@@ -49,6 +85,12 @@ Run `python3 scripts/risk.py <url> <project_path> --method <METHOD>` to show ris
 - `scripts/run_tests.py <yaml_file> [--env-file PATH] [--report PATH]`: execute test suite.
 - `scripts/analyze_failures.py <report.json> [--output PATH]`: classify failures from JSON report.
 - `scripts/risk.py <url> <project_path> [--method METHOD]`: analyze Git-based risk.
+- `scripts/auto.py <project_path> [--url URL] [--method METHOD] [--output-dir DIR] [--validate-only]`: one-command pipeline for batch or single-API context generation.
+- `scripts/diff_detect.py <project_path> [--base REF] [--output PATH]`: detect APIs affected by git changes.
+- `scripts/heal.py <cases.yaml> <project_path> [--output PATH]`: detect stale test cases and suggest fixes.
+- `scripts/learn_history.py <output_dir> [--save PATH]`: learn from historical reports and generate risk profile.
+- `scripts/dashboard.py <output_dir> [--output PATH]`: generate HTML dashboard from historical reports.
+- `scripts/ci_reporter.py <report.json> [--format junit|markdown] [--analysis PATH] [--output PATH]`: convert reports to CI formats.
 
 ## References
 
@@ -68,6 +110,7 @@ Run `python3 scripts/risk.py <url> <project_path> --method <METHOD>` to show ris
 - Do not generate `concurrency` cases yet; show the concurrency dimension as skipped when applicable because the current runner does not execute concurrent requests.
 - Do not force dimensions that do not apply. Explain skipped dimensions in the coverage matrix.
 - YAML must pass `scripts/validate_cases.py` before `scripts/run_tests.py` is used.
+- When context contains `risk_profile`, generate 1-2 extra P0 cases for dimensions with >30% historical failure rate. Prioritize testing modules with high bug density.
 
 ## Failure Analysis Format
 

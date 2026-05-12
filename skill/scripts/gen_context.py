@@ -60,6 +60,15 @@ def main():
         ],
     }
 
+    # Merge risk_profile if available (from historical learning)
+    risk_profile_path = Path(args.project) / "test-output" / "risk_profile.json"
+    if risk_profile_path.exists():
+        try:
+            risk_profile = json.loads(risk_profile_path.read_text(encoding="utf-8"))
+            output["risk_profile"] = risk_profile
+        except (json.JSONDecodeError, OSError):
+            pass
+
     output_path = args.output or f"tests/{args.url.strip('/').replace('/', '_')}_context.json"
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(output, ensure_ascii=False, indent=2))
