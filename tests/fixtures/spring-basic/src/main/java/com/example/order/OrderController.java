@@ -21,6 +21,11 @@ public class OrderController {
         return orderService.create(request);
     }
 
+    @PostMapping("/wrapped-orders")
+    public OrderResponse createWrappedOrder(@RequestBody RequestEnvelope<CreateOrderRequest> request) {
+        return orderService.create(null);
+    }
+
     @GetMapping("/orders/{orderId}")
     public OrderResponse getOrder(@PathVariable Long orderId) {
         return orderService.get(orderId);

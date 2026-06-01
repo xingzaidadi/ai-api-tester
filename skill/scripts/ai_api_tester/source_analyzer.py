@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .config import ProjectConfig, load_config
 from .detector import ProjectInfo
 from .locator import CodeContext, CodeFile
 from .route_extractor import RouteExtractor
@@ -18,9 +19,10 @@ STATE_HINTS = ("status", "state", "setStatus", "setState")
 
 
 class SourceAnalyzer:
-    def __init__(self, project_path: str, project_info: ProjectInfo):
+    def __init__(self, project_path: str, project_info: ProjectInfo, config: ProjectConfig | None = None):
         self.project_path = Path(project_path).resolve()
         self.project_info = project_info
+        self.config = config or load_config(str(self.project_path))
 
     def analyze(self, ctx: CodeContext) -> dict[str, Any]:
         routes = RouteExtractor(str(self.project_path), self.project_info).find_matches(ctx.url, ctx.method)
@@ -52,9 +54,13 @@ class SourceAnalyzer:
         return test_basis
 
     def _analyze_java(self, ctx: CodeContext, test_basis: dict[str, Any]) -> None:
-        request_models = self._java_request_models(ctx)
+        route = test_basis.get("route")
+        request_models = self._java_request_models(ctx, route)
         for model_name, source in request_models.items():
             test_basis["request_models"].append({"name": model_name, "source": source})
+
+        # Ensure model files are loaded even if locator missed them
+        self._ensure_model_files_loaded(ctx, request_models)
 
         for code_file in ctx.files:
             lines = code_file.content.splitlines()
@@ -64,13 +70,79 @@ class SourceAnalyzer:
                 model_name = Path(code_file.path).stem
                 test_basis["fields"].extend(_parse_java_fields(code_file.path, model_name, lines))
 
-    def _java_request_models(self, ctx: CodeContext) -> dict[str, str]:
+    def _ensure_model_files_loaded(self, ctx: CodeContext, request_models: dict[str, str]) -> None:
+        """Find and load model class files that aren't already in ctx.files."""
+        existing_stems = {Path(f.path).stem for f in ctx.files}
+        for model_name in request_models:
+            if model_name in existing_stems:
+                continue
+            target = f"{model_name}.java"
+            for entry_dir in self.project_info.entry_dirs:
+                entry_path = Path(entry_dir)
+                if not entry_path.is_dir():
+                    continue
+                for found in entry_path.rglob(target):
+                    if found.is_file():
+                        try:
+                            content = found.read_text(encoding="utf-8", errors="ignore")
+                        except OSError:
+                            continue
+                        ctx.files.append(CodeFile(
+                            path=str(found), content=content, role="model"
+                        ))
+                        existing_stems.add(model_name)
+                        break
+                if model_name in existing_stems:
+                    break
+
+    def _body_annotation_names(self) -> list[str]:
+        return ["RequestBody", "X5RequestBody"] + self.config.custom_body_annotations
+
+    def _java_request_models(self, ctx: CodeContext, route: dict[str, Any] | None = None) -> dict[str, str]:
         models: dict[str, str] = {}
+        names = self._body_annotation_names()
+        body_re = re.compile(r"@(?:" + "|".join(re.escape(n) for n in names) + r")\b")
+        type_re = re.compile(r"(?:^|[\s(,])([A-Z]\w+)(?:<([A-Z]\w+)>)?\s+\w+")
+        _SKIP_TYPES = {"Valid", "NotNull", "NotEmpty", "NotBlank",
+                       "String", "List", "Map", "Set", "Integer", "Long",
+                       "Boolean", "Double", "Float", "Object", "Optional",
+                       "HttpServletRequest", "HttpServletResponse"}
+
+        # If route is known, scope search to the matched method (± 15 lines from route line)
+        route_file = route.get("file", "") if route else ""
+        route_line = route.get("line", 0) if route else 0
+
         for code_file in ctx.files:
-            for idx, line in enumerate(code_file.content.splitlines(), start=1):
-                for match in re.finditer(r"@(?:RequestBody|X5RequestBody)\s+(?:@\w+\s+)*(\w+)", line):
-                    model_name = match.group(1)
-                    models[model_name] = f"{code_file.path}:{idx}"
+            lines = code_file.content.splitlines()
+            # Determine search range
+            if route_file and route_line and code_file.path == route_file:
+                # Only scan the matched method's region
+                start = max(0, route_line - 3)
+                end = min(len(lines), route_line + 15)
+            else:
+                start = 0
+                end = len(lines)
+
+            for idx in range(start, end):
+                line = lines[idx]
+                if not body_re.search(line):
+                    continue
+                search_block = line
+                for lookahead in range(1, 4):
+                    if idx + lookahead < len(lines):
+                        search_block += " " + lines[idx + lookahead].strip()
+                    type_match = type_re.search(search_block[search_block.find("@"):] if "@" in search_block else search_block)
+                    if type_match:
+                        outer_name = type_match.group(1)
+                        inner_name = type_match.group(2)
+                        is_skip = outer_name in names or outer_name in _SKIP_TYPES
+                        if inner_name and inner_name not in _SKIP_TYPES:
+                            models[inner_name] = f"{code_file.path}:{idx + 1}"
+                        if not is_skip:
+                            models[outer_name] = f"{code_file.path}:{idx + 1}"
+                        if inner_name or not is_skip:
+                            break
+                        continue
         return models
 
     def _analyze_python(self, ctx: CodeContext, test_basis: dict[str, Any]) -> None:
@@ -291,7 +363,7 @@ def _pydantic_required(default_expr: str | None) -> bool:
 def _route_to_dict(route: Any) -> dict[str, Any] | None:
     if route is None:
         return None
-    return {
+    result = {
         "method": route.method,
         "path": route.path,
         "normalized_path": route.normalized_path,
@@ -300,6 +372,9 @@ def _route_to_dict(route: Any) -> dict[str, Any] | None:
         "handler": route.handler,
         "framework": route.framework,
     }
+    if getattr(route, "description", ""):
+        result["description"] = route.description
+    return result
 
 
 def _dedupe_dicts(items: list[dict[str, Any]], keys: tuple[str, ...]) -> list[dict[str, Any]]:

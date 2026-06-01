@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .config import ProjectConfig, load_config
 from .detector import ProjectInfo
 
 
@@ -19,6 +20,7 @@ class Route:
     line: int
     handler: str
     framework: str
+    description: str = ""
 
 
 SPRING_METHODS = {
@@ -38,9 +40,10 @@ FASTAPI_METHODS = {"get", "post", "put", "delete", "patch", "head", "options"}
 
 
 class RouteExtractor:
-    def __init__(self, project_path: str, project_info: ProjectInfo):
+    def __init__(self, project_path: str, project_info: ProjectInfo, config: ProjectConfig | None = None):
         self.project_path = Path(project_path).resolve()
         self.project_info = project_info
+        self.config = config or load_config(str(self.project_path))
 
     def extract(self) -> list[Route]:
         framework = self.project_info.framework
@@ -69,6 +72,11 @@ class RouteExtractor:
                     seen.add(path)
                     yield path
 
+    def _get_custom_mapping_annotations(self) -> set[str]:
+        base = set(CUSTOM_MAPPING_ANNOTATIONS)
+        base.update(self.config.custom_mapping_annotations)
+        return base
+
     def _extract_spring_routes(self) -> list[Route]:
         routes: list[Route] = []
         for path in self._iter_source_files("*.java"):
@@ -84,11 +92,12 @@ class RouteExtractor:
                 if class_line and line_no < class_line:
                     continue
 
-                methods, route_path = _parse_spring_mapping(annotation)
+                methods, route_path = _parse_spring_mapping(annotation, self._get_custom_mapping_annotations())
                 if not methods:
                     continue
 
                 handler = _find_java_method_name(lines, line_no) or ""
+                description = _find_api_doc(lines, line_no)
                 for method in methods:
                     full_path = join_paths(class_prefix, route_path)
                     routes.append(Route(
@@ -99,6 +108,7 @@ class RouteExtractor:
                         line=line_no,
                         handler=handler,
                         framework="spring-boot",
+                        description=description,
                     ))
         return routes
 
@@ -110,7 +120,7 @@ class RouteExtractor:
         start = max(1, class_line - 12)
         block = "\n".join(lines[start - 1:class_line - 1])
         for annotation, _ in _iter_java_mapping_annotations(block.splitlines(), line_offset=start - 1):
-            methods, path = _parse_spring_mapping(annotation)
+            methods, path = _parse_spring_mapping(annotation, self._get_custom_mapping_annotations())
             if "ANY" in methods:
                 return path
         return ""
@@ -204,17 +214,18 @@ def join_paths(*parts: str) -> str:
     return "/" + "/".join(clean) if clean else "/"
 
 
-def _parse_spring_mapping(annotation: str) -> tuple[list[str], str]:
+def _parse_spring_mapping(annotation: str, custom_annotations: set[str] | None = None) -> tuple[list[str], str]:
     name_match = re.search(r"@(\w+Mapping)\b", annotation)
     if not name_match:
         return [], ""
 
     name = name_match.group(1)
+    all_custom = custom_annotations or CUSTOM_MAPPING_ANNOTATIONS
     if name in SPRING_METHODS:
         methods = [SPRING_METHODS[name]]
     elif name == "RequestMapping":
         methods = _extract_spring_request_methods(annotation)
-    elif name in CUSTOM_MAPPING_ANNOTATIONS:
+    elif name in all_custom:
         # Custom mapping annotations (e.g. @X5RequestMapping) default to POST
         methods = ["POST"]
     else:
@@ -273,6 +284,18 @@ def _find_java_method_name(lines: list[str], annotation_line: int) -> str | None
         if match:
             return match.group(2)
     return None
+
+
+def _find_api_doc(lines: list[str], mapping_line: int) -> str:
+    """Search nearby lines (above and below the mapping annotation) for @HttpApiDoc(apiName="...")."""
+    # mapping_line is 1-indexed; search 8 lines above and 4 lines below
+    start = max(0, mapping_line - 9)
+    end = min(len(lines), mapping_line + 4)
+    for line in lines[start:end]:
+        match = re.search(r'@HttpApiDoc\s*\([^)]*apiName\s*=\s*"([^"]+)"', line)
+        if match:
+            return match.group(1)
+    return ""
 
 
 def _extract_fastapi_router_prefixes(content: str) -> dict[str, str]:

@@ -112,9 +112,10 @@ class CodeLocator:
                     entry_dir,
                 ]
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=10
+                    cmd, capture_output=True, timeout=10
                 )
-                for line in result.stdout.strip().split("\n"):
+                stdout = result.stdout.decode("utf-8", errors="ignore")
+                for line in stdout.strip().split("\n"):
                     if not line:
                         continue
                     parts = line.split(":", 2)
@@ -125,7 +126,7 @@ class CodeLocator:
                         except ValueError:
                             line_num = 0
                         results.append((Path(fpath), line_num))
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
                 continue
 
         return results
@@ -220,25 +221,44 @@ class CodeLocator:
             if found:
                 results.append(found)
 
-        # 找 DTO/Request/Response 类
-        dto_classes = re.findall(r'@RequestBody\s+(?:@\w+\s+)*(\w+)', content)
-        for dto in dto_classes:
-            found = self._find_java_class(dto)
-            if found:
-                results.append(found)
+        # 找 DTO/Request/Response 类 (支持 @RequestBody 和 @X5RequestBody，含泛型，跨行)
+        lines = content.splitlines()
+        body_re = re.compile(r'@(?:RequestBody|X5RequestBody)\b')
+        type_re = re.compile(r'(?:^|[\s(,])([A-Z]\w+)(?:<([A-Z]\w+)>)?\s+\w+')
+        skip_names = {"Valid", "NotNull", "NotEmpty", "NotBlank", "RequestBody", "X5RequestBody",
+                      "String", "List", "Map", "Set", "Integer", "Long", "Boolean", "Object"}
+        for i, line in enumerate(lines):
+            body_match = body_re.search(line)
+            if not body_match:
+                continue
+            # Search from after the @Body annotation
+            after_body = line[body_match.end():]
+            block = after_body
+            for j in range(1, 4):
+                if i + j < len(lines):
+                    block += " " + lines[i + j].strip()
+                m = type_re.search(block)
+                if m and m.group(1) not in skip_names:
+                    if m.group(2):
+                        found = self._find_java_class(m.group(2))
+                        if found:
+                            results.append(found)
+                    found = self._find_java_class(m.group(1))
+                    if found:
+                        results.append(found)
+                    break
 
         return results[:5]
 
     def _find_java_class(self, class_name: str) -> Path:
+        target = f"{class_name}.java"
         for entry_dir in self.project_info.entry_dirs:
-            try:
-                cmd = ["find", entry_dir, "-name", f"{class_name}.java", "-type", "f"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                for line in result.stdout.strip().split("\n"):
-                    if line:
-                        return Path(line)
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+            entry_path = Path(entry_dir)
+            if not entry_path.is_dir():
                 continue
+            for found in entry_path.rglob(target):
+                if found.is_file():
+                    return found
         return None
 
     def _trace_python_calls(self, content: str, ctx: CodeContext) -> list:

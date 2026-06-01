@@ -29,6 +29,15 @@ class SourceAnalyzerTest(unittest.TestCase):
         self.assertEqual(1, fields["quantity"]["constraints"][0]["value"])
         self.assertTrue(any("request.getQuantity()" in item["condition"] for item in basis["branches"]))
 
+    def test_spring_extracts_generic_request_body_inner_model(self):
+        basis = self._basis("spring-basic", "/api/v1/wrapped-orders", "POST")
+        fields = {field["name"]: field for field in basis["fields"]}
+
+        self.assertEqual("createWrappedOrder", basis["route"]["handler"])
+        self.assertTrue(any(model["name"] == "CreateOrderRequest" for model in basis["request_models"]))
+        self.assertTrue(fields["productId"]["required"])
+        self.assertEqual("not_null", fields["productId"]["constraints"][0]["type"])
+
     def test_fastapi_extracts_pydantic_fields_and_auth(self):
         basis = self._basis("fastapi-basic", "/api/v1/orders", "POST")
         fields = {field["name"]: field for field in basis["fields"]}
