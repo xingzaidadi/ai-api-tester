@@ -1,0 +1,115 @@
+metadata:
+  api: "POST /api/finance/refunds/{refundId}/retry"
+  language: "python"
+  framework: "mock-http"
+  generated_at: "2026-06-01T00:00:00"
+  risk_score: 8.7
+  dimensions_covered:
+    - security_auth
+    - idempotency
+    - data_consistency
+    - compliance
+
+env:
+  base_url: "{{ENV.FINANCE_REFUND_BASE_URL}}"
+  admin_token: "demo-finance-admin-token"
+  manager_token: "demo-finance-manager-token"
+
+cases:
+  - id: refund_retry_auth_001
+    name: "未登录操作员不能发起退款重试"
+    dimension: security_auth
+    priority: P0
+    source: "RefundRetryService.py:12 -> login required"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/finance/refunds/auth-required/retry"
+      body:
+        amount: 128.00
+        reason: "gateway timeout retry"
+    expect:
+      status: 401
+      body:
+        code: "UNAUTHENTICATED"
+
+  - id: refund_retry_manager_limit_001
+    name: "财务经理不能重试超过额度的退款"
+    dimension: security_auth
+    priority: P0
+    source: "RefundRetryService.py:24 -> manager refund retry limit exceeded"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/finance/refunds/high-value/retry"
+      headers:
+        Authorization: "Bearer {{env.manager_token}}"
+        X-Operator-Role: "finance_manager"
+      body:
+        amount: 6000.00
+        reason: "manual retry"
+    expect:
+      status: 403
+      body:
+        code: "REFUND_LIMIT_EXCEEDED"
+
+  - id: refund_retry_gateway_failed_001
+    name: "外部网关失败时本地账务不能标记为已退款"
+    dimension: data_consistency
+    priority: P0
+    source: "RefundRetryService.py:45 -> gateway refund can fail before ledger update"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/finance/refunds/gateway-fail/retry"
+      headers:
+        Authorization: "Bearer {{env.admin_token}}"
+        X-Operator-Role: "finance_admin"
+      body:
+        amount: 128.00
+        reason: "gateway timeout retry"
+    expect:
+      status: 409
+      body:
+        code: "GATEWAY_FAILED"
+        data.ledgerUpdated: false
+        data.refundStatus: "failed"
+
+  - id: refund_retry_idempotency_001
+    name: "相同幂等键重复重试不能产生重复网关退款"
+    dimension: idempotency
+    priority: P0
+    source: "RefundRetryService.py:32 -> find_by_idempotency_key(idempotency_key)"
+    repeat: 2
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/finance/refunds/duplicate/retry"
+      headers:
+        Authorization: "Bearer {{env.admin_token}}"
+        X-Operator-Role: "finance_admin"
+        Idempotency-Key: "demo-refund-retry-idem-001"
+      body:
+        amount: 128.00
+        reason: "gateway timeout retry"
+    expect:
+      status: 200
+      all_responses_identical: true
+
+  - id: refund_retry_audit_001
+    name: "退款重试必须记录操作员和审计结果"
+    dimension: compliance
+    priority: P1
+    source: "RefundRetryService.py:59 -> audit_log.record(refund_retry_completed)"
+    request:
+      method: POST
+      url: "{{env.base_url}}/api/finance/refunds/audit-ok/retry"
+      headers:
+        Authorization: "Bearer {{env.admin_token}}"
+        X-Operator-Role: "finance_admin"
+      body:
+        amount: 128.00
+        reason: "audit check"
+    expect:
+      status: 200
+      body:
+        code: "OK"
+        data.auditRecorded: true
+        data.operatorId: "finance-admin-001"
+        "@not_contains": ["stack trace", "NullPointerException", "java.lang"]

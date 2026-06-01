@@ -257,7 +257,10 @@ Validate the demo YAML:
 
 ```bash
 python3 skill/scripts/validate_cases.py examples/demo-order-create.yaml
+python3 skill/scripts/validate_cases.py examples/finance-refund-retry.yaml
 ```
+
+The finance refund retry example is designed for Agentic QA Gate demos. It covers auth boundary, refund limit, external gateway failure consistency, idempotency, and audit evidence. The regression test `tests.test_finance_refund_example` runs it against a local mock HTTP service and verifies that `automation_results.json` marks the idempotency case as `probable_bug`.
 
 ## Current Limits
 

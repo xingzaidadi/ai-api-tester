@@ -112,6 +112,11 @@ For updating existing test cases when source code has changed:
 - `references/context_format.md`: generated context JSON structure and how to use `test_basis`.
 - `references/failure_analysis.md`: failure classification types, heuristics, and workflow.
 
+## Examples
+
+- `examples/demo-order-create.yaml`: broad order-create API case suite.
+- `examples/finance-refund-retry.yaml`: finance refund retry suite for Agentic QA Gate demos; covers auth, approval limit, gateway failure consistency, idempotency, and audit evidence.
+
 ## Generation Rules
 
 - Every generated case MUST have a real `source` value pointing to a file and line or directly observed code construct.
