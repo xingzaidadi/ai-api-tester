@@ -14,6 +14,7 @@ def main():
     parser.add_argument("yaml_file", help="YAML test case file")
     parser.add_argument("--env-file", "-e", default=None, help="Environment config file")
     parser.add_argument("--report", "-r", default=None, help="Report output path")
+    parser.add_argument("--automation-results", default=None, help="Agentic QA Gate automation_results.json output path")
     parser.add_argument("--dashboard", "-d", default=None, help="Path to test-output/ dir for dashboard regeneration")
     parser.add_argument("--ci", action="store_true", default=False, help="Output JUnit XML next to the report")
     args = parser.parse_args()
@@ -22,6 +23,7 @@ def main():
     from ai_api_tester.engine import TestEngine
     from ai_api_tester.report import ReportGenerator
     from ai_api_tester.schema import validate_suite
+    from ai_api_tester.automation_evidence import build_automation_evidence, write_json
 
     yaml_path = Path(args.yaml_file)
     if not yaml_path.exists():
@@ -50,12 +52,28 @@ def main():
 
     reporter = ReportGenerator()
     print(reporter.console_report(result))
+    report_payload = None
 
     if args.report:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(reporter.json_report(result))
+        report_text = reporter.json_report(result)
+        report_path.write_text(report_text, encoding="utf-8")
+        import json
+        report_payload = json.loads(report_text)
         print(f"Report saved: {report_path}")
+
+    if args.automation_results:
+        import json
+        if report_payload is None:
+            report_payload = json.loads(reporter.json_report(result))
+        automation_path = Path(args.automation_results)
+        evidence = build_automation_evidence(
+            report_payload,
+            report_path=Path(args.report) if args.report else None,
+        )
+        write_json(automation_path, evidence)
+        print(f"Automation evidence saved: {automation_path}")
 
     if args.dashboard and args.report:
         try:

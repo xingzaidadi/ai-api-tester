@@ -41,8 +41,9 @@ When a user wants to start using ai-api-tester on their project, or says "初始
 2. Run `python3 scripts/validate_cases.py <cases.yaml>`.
 3. Run `python3 scripts/run_tests.py <cases.yaml> --env-file <env.yaml> --report <report.json>`.
 4. If any case fails or errors, run `python3 scripts/analyze_failures.py <report.json> --context-json <context.json> --output <analysis.json>` when a context file is available. Omit `--context-json` if no context file exists.
-5. Display the result summary and failure analysis.
-6. For each `probable_bug`, read the `source` location, compare expected vs actual, and provide a source-backed fix suggestion.
+5. If the user needs Agentic QA Gate integration, run `python3 scripts/export_automation_results.py <report.json> --analysis <analysis.json> --output <automation_results.json>`.
+6. Display the result summary and failure analysis.
+7. For each `probable_bug`, read the `source` location, compare expected vs actual, and provide a source-backed fix suggestion.
 
 ### Analyze Risk
 
@@ -92,6 +93,7 @@ For updating existing test cases when source code has changed:
 - `scripts/validate_cases.py <yaml_file>`: validate YAML without executing HTTP requests.
 - `scripts/run_tests.py <yaml_file> [--env-file PATH] [--report PATH]`: execute test suite.
 - `scripts/analyze_failures.py <report.json> [--output PATH]`: classify failures from JSON report.
+- `scripts/export_automation_results.py <report.json> --output PATH [--analysis PATH]`: export Agentic QA Gate `automation_results.json`.
 - `scripts/risk.py <url> <project_path> [--method METHOD]`: analyze Git-based risk.
 - `scripts/auto.py <project_path> [--url URL] [--method METHOD] [--output-dir DIR] [--validate-only]`: one-command pipeline for batch or single-API context generation.
 - `scripts/diff_detect.py <project_path> [--base REF] [--output PATH]`: detect APIs affected by git changes.

@@ -15,6 +15,7 @@ The project is currently skill-first: the self-contained runtime lives under `sk
 - Support setup, teardown, extracts, params/query, response-time checks, and smart assertions.
 - Generate JSON reports with resolved requests and response details.
 - Analyze failures into `env_issue`, `test_issue`, and `probable_bug`.
+- Export Agentic QA Gate `automation_results.json` evidence.
 - Produce Chinese failure summaries with source snippets and optional `test_basis` evidence.
 
 ## Supported Frameworks
@@ -117,6 +118,37 @@ The analyzer prints Chinese output and writes JSON containing:
 - `source_context`
 - `context_evidence`
 
+### 7. Export Agentic QA Gate Evidence
+
+If the API run needs to be attached to Agentic QA Gate, export the normalized automation evidence:
+
+```bash
+python3 scripts/export_automation_results.py /tmp/order-report.json \
+  --analysis /tmp/order-failure-analysis.json \
+  --output /tmp/automation_results.json \
+  --run-id order_api_validation_2026_06_01
+```
+
+Or generate it directly when executing tests:
+
+```bash
+python3 scripts/run_tests.py /tmp/order-cases.yaml \
+  --env-file /tmp/env.yaml \
+  --report /tmp/order-report.json \
+  --automation-results /tmp/automation_results.json
+```
+
+The output follows the Agentic QA Gate schema:
+
+- `schema_version`
+- `run_id`
+- `source_tool`
+- `risk_domains`
+- `suites`
+- `passed_cases`
+- `failed_cases`
+- `skipped_cases`
+
 ## YAML Example
 
 ```yaml
@@ -207,12 +239,13 @@ PYTHONPYCACHEPREFIX=/private/tmp/pycache-ai-api-tester \
   tests.test_schema \
   tests.test_engine \
   tests.test_failure_analyzer \
+  tests.test_automation_evidence \
   tests.test_cli_workflow \
   tests.test_skill_install_smoke \
   tests.test_skill_structure -v
 ```
 
-The suite covers route extraction, source analysis, YAML schema validation, the HTTP runner, failure classification, the main CLI workflow, skill structure, and copied-skill smoke behavior.
+The suite covers route extraction, source analysis, YAML schema validation, the HTTP runner, failure classification, Agentic QA Gate evidence export, the main CLI workflow, skill structure, and copied-skill smoke behavior.
 
 Validate the skill:
 
