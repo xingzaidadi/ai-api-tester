@@ -121,7 +121,7 @@ class TestEngine:
                         status_required=False,
                     )
                     if not ok:
-                        print(f"  ❌ Setup [{step_id}] assertion failed: {'; '.join(failures)}")
+                        print(f"  [FAIL] Setup [{step_id}] assertion failed: {'; '.join(failures)}")
                         return False, {
                             "id": step_id,
                             "type": "assertion_failed",
@@ -132,7 +132,7 @@ class TestEngine:
                             "failures": failures,
                         }
                 elif resp.status_code >= 400:
-                    print(f"  ❌ Setup [{step_id}] failed: HTTP {resp.status_code}")
+                    print(f"  [FAIL] Setup [{step_id}] failed: HTTP {resp.status_code}")
                     return False, {
                         "id": step_id,
                         "type": "http_error",
@@ -150,10 +150,10 @@ class TestEngine:
                     self.variables[f"setup.{step_id}.{var_name}"] = value
                     self.variables[var_name] = value
 
-                print(f"  ✅ Setup [{step_id}] OK")
+                print(f"  [OK] Setup [{step_id}] OK")
                 return True, {}
             except Exception as e:
-                print(f"  ❌ Setup [{step_id}] error: {e}")
+                print(f"  [ERROR] Setup [{step_id}] error: {e}")
                 return False, {
                     "id": step_id,
                     "type": "exception",
@@ -163,7 +163,7 @@ class TestEngine:
 
         elif action == "skill":
             # 预留：联动造数 Skill
-            print(f"  ⏭️ Setup [{step_id}] skill action (not implemented)")
+            print(f"  [SKIP] Setup [{step_id}] skill action (not implemented)")
             return True, {}
 
         return True, {}

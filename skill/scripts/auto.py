@@ -167,7 +167,7 @@ def run_tests(output_dir: str, env_file: str | None = None) -> int:
 
         errors = validate_suite(suite_data)
         if errors:
-            print(f"        ⚠️ Validation failed: {errors}")
+            print(f"        [WARN] Validation failed: {errors}")
             total_error += 1
             continue
 
@@ -196,7 +196,7 @@ def run_tests(output_dir: str, env_file: str | None = None) -> int:
         total_error += errors
 
         rel_report = report_path.relative_to(Path.cwd()) if report_path.is_relative_to(Path.cwd()) else report_path
-        print(f"        ✅ {passed} passed, ❌ {failed} failed, ⚠️ {errors} errors")
+        print(f"        [SUMMARY] {passed} passed, {failed} failed, {errors} errors")
         print(f"        Report: {rel_report}\n")
 
     print(f"Summary: {total_pass} passed, {total_fail} failed, {total_error} errors across {total_suites} suites.")

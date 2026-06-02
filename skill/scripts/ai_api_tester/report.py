@@ -11,11 +11,11 @@ class ReportGenerator:
     def console_report(self, result: SuiteResult) -> str:
         lines = []
         lines.append("")
-        lines.append(f"{'═' * 60}")
-        lines.append(f"  📋 测试报告：{result.api}")
-        lines.append(f"{'═' * 60}")
+        lines.append("=" * 60)
+        lines.append(f"  [REPORT] 测试报告：{result.api}")
+        lines.append("=" * 60)
         lines.append("")
-        lines.append(f"  总计: {result.total} | ✅ 通过: {result.passed} | ❌ 失败: {result.failed} | ⚠️ 错误: {result.errored} | ⏭️ 跳过: {result.skipped}")
+        lines.append(f"  总计: {result.total} | [PASS] 通过: {result.passed} | [FAIL] 失败: {result.failed} | [ERROR] 错误: {result.errored} | [SKIP] 跳过: {result.skipped}")
         lines.append(f"  耗时: {result.duration_ms}ms")
         lines.append(f"  维度覆盖: {', '.join(result.dimensions_covered)}")
         lines.append("")
@@ -23,7 +23,7 @@ class ReportGenerator:
         # 通过的用例（简要）
         passed = [c for c in result.cases if c.status == "pass"]
         if passed:
-            lines.append(f"  ✅ 通过 ({len(passed)}):")
+            lines.append(f"  [PASS] 通过 ({len(passed)}):")
             for c in passed:
                 lines.append(f"     [{c.priority}][{c.dimension}] {c.name} ({c.duration_ms}ms)")
             lines.append("")
@@ -31,7 +31,7 @@ class ReportGenerator:
         # 失败的用例（详细）
         failed = [c for c in result.cases if c.status == "fail"]
         if failed:
-            lines.append(f"  ❌ 失败 ({len(failed)}):")
+            lines.append(f"  [FAIL] 失败 ({len(failed)}):")
             for c in failed:
                 lines.append(f"     [{c.priority}][{c.dimension}] {c.name}")
                 if c.source:
@@ -44,13 +44,13 @@ class ReportGenerator:
         # 错误的用例
         errored = [c for c in result.cases if c.status == "error"]
         if errored:
-            lines.append(f"  ⚠️ 错误 ({len(errored)}):")
+            lines.append(f"  [ERROR] 错误 ({len(errored)}):")
             for c in errored:
                 lines.append(f"     [{c.priority}][{c.dimension}] {c.name}")
                 lines.append(f"        错误: {c.error_message}")
             lines.append("")
 
-        lines.append(f"{'═' * 60}")
+        lines.append("=" * 60)
 
         # 维度覆盖统计
         dimension_stats = {}
@@ -66,10 +66,10 @@ class ReportGenerator:
 
         if dimension_stats:
             lines.append("")
-            lines.append("  📊 维度覆盖统计:")
+            lines.append("  [STATS] 维度覆盖统计:")
             for dim, stats in dimension_stats.items():
                 rate = stats["pass"] / stats["total"] * 100 if stats["total"] > 0 else 0
-                icon = "✅" if rate == 100 else "⚠️" if rate >= 50 else "❌"
+                icon = "[PASS]" if rate == 100 else "[WARN]" if rate >= 50 else "[FAIL]"
                 lines.append(f"     {icon} {dim}: {stats['pass']}/{stats['total']} ({rate:.0f}%)")
 
         lines.append("")
@@ -143,7 +143,7 @@ class ReportGenerator:
         lines.append("| ID | 名称 | 维度 | 优先级 | 状态 | 耗时 |")
         lines.append("|----|------|------|--------|------|------|")
         for c in result.cases:
-            status_icon = {"pass": "✅", "fail": "❌", "error": "⚠️", "skip": "⏭️"}.get(c.status, "?")
+            status_icon = {"pass": "[PASS]", "fail": "[FAIL]", "error": "[ERROR]", "skip": "[SKIP]"}.get(c.status, "?")
             lines.append(f"| {c.case_id} | {c.name} | {c.dimension} | {c.priority} | {status_icon} | {c.duration_ms}ms |")
 
         # 失败详情

@@ -9,7 +9,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+def _configure_output_encoding() -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main():
+    _configure_output_encoding()
+
     parser = argparse.ArgumentParser(description="Run test suite")
     parser.add_argument("yaml_file", help="YAML test case file")
     parser.add_argument("--env-file", "-e", default=None, help="Environment config file")
