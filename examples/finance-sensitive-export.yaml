@@ -1,0 +1,112 @@
+metadata:
+  api: "GET /api/finance/reports/export"
+  language: "python"
+  framework: "mock-http"
+  generated_at: "2026-06-02T00:00:00"
+  risk_score: 8.4
+  dimensions_covered:
+    - security_auth
+    - compliance
+    - data_consistency
+
+env:
+  base_url: "{{ENV.FINANCE_EXPORT_BASE_URL}}"
+  analyst_token: "demo-finance-analyst-token"
+  admin_token: "demo-finance-admin-token"
+
+cases:
+  - id: finance_export_auth_001
+    name: "未登录用户不能导出财务报表"
+    dimension: security_auth
+    priority: P0
+    source: "ExportService.py:11 -> login required"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/finance/reports/export"
+      query:
+        projectId: "approved-project"
+        format: "csv"
+    expect:
+      status: 401
+      body:
+        code: "UNAUTHENTICATED"
+
+  - id: finance_export_sensitive_role_001
+    name: "data_analyst 不能开启 includeSensitive 导出敏感字段"
+    dimension: security_auth
+    priority: P0
+    source: "ExportService.py:23 -> data_analyst cannot include sensitive fields"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/finance/reports/export"
+      headers:
+        Authorization: "Bearer {{env.analyst_token}}"
+        X-Operator-Role: "data_analyst"
+      query:
+        projectId: "approved-project"
+        includeSensitive: "true"
+    expect:
+      status: 403
+      body:
+        code: "SENSITIVE_EXPORT_FORBIDDEN"
+
+  - id: finance_export_masking_001
+    name: "data_analyst 默认导出结果不能包含身份证、邮箱或手机号"
+    dimension: compliance
+    priority: P0
+    source: "ExportService.py:37 -> mask_sensitive_fields(row)"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/finance/reports/export"
+      headers:
+        Authorization: "Bearer {{env.analyst_token}}"
+        X-Operator-Role: "data_analyst"
+      query:
+        projectId: "approved-project"
+        includeSensitive: "false"
+    expect:
+      status: 200
+      body:
+        code: "OK"
+        data.rowCount: 2
+        "@not_contains": ["national_id", "email", "phone", "110101199001010011", "alice@example.com", "13800000000"]
+
+  - id: finance_export_bulk_approval_001
+    name: "未审批项目不能执行批量导出"
+    dimension: data_consistency
+    priority: P0
+    source: "ExportService.py:48 -> project.approval_status must be approved"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/finance/reports/export"
+      headers:
+        Authorization: "Bearer {{env.admin_token}}"
+        X-Operator-Role: "finance_admin"
+      query:
+        projectId: "unapproved-project"
+        bulk: "true"
+    expect:
+      status: 409
+      body:
+        code: "PROJECT_NOT_APPROVED"
+        data.exportStarted: false
+
+  - id: finance_export_masking_regression_001
+    name: "导出接口不能回归泄露手机号字段"
+    dimension: compliance
+    priority: P0
+    source: "ExportService.py:55 -> sensitive field allowlist regression"
+    request:
+      method: GET
+      url: "{{env.base_url}}/api/finance/reports/export"
+      headers:
+        Authorization: "Bearer {{env.analyst_token}}"
+        X-Operator-Role: "data_analyst"
+      query:
+        projectId: "masking-regression"
+        includeSensitive: "false"
+    expect:
+      status: 200
+      body:
+        code: "OK"
+        "@not_contains": ["phone", "13800000000"]

@@ -258,9 +258,12 @@ Validate the demo YAML:
 ```bash
 python3 skill/scripts/validate_cases.py examples/demo-order-create.yaml
 python3 skill/scripts/validate_cases.py examples/finance-refund-retry.yaml
+python3 skill/scripts/validate_cases.py examples/finance-sensitive-export.yaml
 ```
 
 The finance refund retry example is designed for Agentic QA Gate demos. It covers auth boundary, refund limit, external gateway failure consistency, idempotency, and audit evidence. The regression test `tests.test_finance_refund_example` runs it against a local mock HTTP service and verifies that `automation_results.json` marks the idempotency case as `probable_bug`.
+
+The finance sensitive export example is the second Agentic QA Gate business-risk demo. It covers unauthenticated export, data_analyst sensitive export denial, safe default masking, unapproved bulk export rejection, and an intentional masking regression. The regression test `tests.test_finance_sensitive_export_example` runs it against a local mock HTTP service and verifies that `automation_results.json` marks the masking regression case as `probable_bug` with `sensitive_export_risk`.
 
 ## Current Limits
 

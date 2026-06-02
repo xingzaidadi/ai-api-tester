@@ -116,6 +116,7 @@ For updating existing test cases when source code has changed:
 
 - `examples/demo-order-create.yaml`: broad order-create API case suite.
 - `examples/finance-refund-retry.yaml`: finance refund retry suite for Agentic QA Gate demos; covers auth, approval limit, gateway failure consistency, idempotency, and audit evidence.
+- `examples/finance-sensitive-export.yaml`: finance sensitive export suite for Agentic QA Gate demos; covers auth, sensitive export denial, masking, bulk export approval, and a probable sensitive data leak.
 
 ## Generation Rules
 
